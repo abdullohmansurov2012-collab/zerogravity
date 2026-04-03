@@ -130,21 +130,16 @@ function ChatApp({ user }) {
     await setDoc(chatDocRef, { id: chatId, title: chatTitle, messages: newMsgs, createdAt: activeChat?.createdAt || Date.now() });
 
     try {
-      const apiMsgs = newMsgs.map(m => ({ role: m.role, content: m.content }));
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const apiMsgs = newMsgs.map(m => ({ role: m.role === "user" ? "user" : "model", parts: [{ text: m.content }] }));
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 2000, system: SYSTEM, messages: apiMsgs })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: SYSTEM }] }, contents: apiMsgs })
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
       
-      const reply = data.content[0].text;
+      const reply = data.candidates[0].content.parts[0].text;
       
       // AI javobini Firestore'ga qo'shamiz
       await setDoc(chatDocRef, { id: chatId, title: chatTitle, messages: [...newMsgs, { role: "assistant", content: reply }], createdAt: activeChat?.createdAt || Date.now() });
