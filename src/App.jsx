@@ -1,177 +1,286 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc, setDoc, collection, onSnapshot, deleteDoc } from "firebase/firestore";
+import { auth, googleProvider, db } from "./firebase";
 import './index.css';
 
-const COLORS = {
-  bg: "#05080f",
-  panel: "#0d1220",
-  surface: "#111827",
-  border: "#1e2d45",
-  accent: "#00d4ff",
-  accentDim: "#0099bb",
-  green: "#00ff9d",
-  orange: "#ff6b2b",
-  red: "#ff4757",
-  purple: "#a855f7",
-  text: "#e2e8f0",
-  muted: "#64748b",
+const C = {
+  bg: "#0a0a0a", sidebar: "#111111", surface: "#1a1a1a", surfaceHover: "#222",
+  border: "#2a2a2a", accent: "#8b5cf6", accentLight: "#a78bfa",
+  text: "#fafafa", muted: "#888", dim: "#555",
+  green: "#34d399", blue: "#60a5fa", pink: "#f472b6",
 };
 
-const SYSTEM_PROMPT = `Siz dunyodagi eng tajribali va tanqidiy fikrlovchi High-End Senior Developer va Security Expertisiz. 
-Sizning vazifangiz ZeroGravity IDE ichida foydalanuvchi yuborgan kodni shafqatsizlarcha va o'ta chuqur tahlil qilish.
+const SYSTEM = `Siz AbdGPT — foydalanuvchilar uchun eng iliq, do'stona va aqlli AI yordamchisiz.
+Siz har qanday savolga javob berasiz: hayotiy maslahatlar, motivatsiya, o'quv savollari, kundalik muammolar — hamma narsa.
+QOIDALAR:
+1. Har doim O'zbek tilida, iliq va samimiy tarzda javob bering.
+2. Ko'ngilni ko'taring. Insonlarga o'zlariga ishonch beradigan, ruhlantiradigan so'zlar ayting.
+3. Javoblaringiz aniq, foydali va qisqa bo'lsin. Lekin kerak joyda chuqur tushuntiring.
+4. Sizning ismingiz: AbdGPT. Balki foydalanuvchi "Sen kimsan?" desa o'zingizni shunday tanishtiring.
+5. Har bir javobingiz haqiqiy do'st suhbatiga o'xshab ko'rinsin.`;
 
-MAJBURIY QOIDALAR:
-1. Har bir kiritilgan kodni qat'iy va chuqur "Chain of Thought" (Mulohaza zanjiri) orqali tahlil qilasiz.
-2. <thought>...</thought> teglari ichida o'zbek tilida quyidagilarni tahlil qiling:
-   - Koddagi mantiqiy xatolar va "Edge cases" (kutilmagan holatlar).
-   - Performance (tezlik) va xotira (memory leak) muammolari.
-   - Xavfsizlik bo'shliqlari (security vulnerabilities).
-   - "Qattiqroq o'ylash": Shunchaki yuzaki emas, eng tubidagi muammolarni qidiring.
-3. Tahlildan keyingina foydalanuvchiga aniq, pro-level tavsiyalar va optimallashtirilgan kod variantini taqdim eting.
-4. Agar kodda xato bo'lmasa ham, uni qanday qilib yanada "clean" va professional qilish mumkinligini ayting.
-5. Doim o'zbek tilida, professional va do'stona muloqot qiling.`;
+function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
-export default function App() {
-  const [code, setCode] = useState("// Fayl yuklang yoki kod yozing...\\nfunction hello() { console.log('ZeroGravity AI'); }");
-  const [apiKey, setApiKey] = useState("");
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: "Salom! Men ZeroGravity Deep-Think AI yordamchingizman. Faylingizni yuklang yoki kodni shu yerga joylang, men uni shafqatsizlarcha tahlil qilib beraman! ⚡" }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("editor");
-  const [output, setOutput] = useState("");
-  const chatEndRef = useRef(null);
-  const fileInputRef = useRef(null);
-
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setCode(event.target.result);
-      setMessages(prev => [...prev, { role: "assistant", content: `📁 Fayl yuklandi: **${file.name}**. Endi tahlil tugmasini bosib xatolarni ko'rishingiz mumkin!` }]);
-    };
-    reader.readAsText(file);
-  };
-
-  const sendMessage = async (customMsg = null) => {
-    const msgToSend = customMsg || input.trim();
-    if (!msgToSend || loading || !apiKey) return;
-    
-    if (!customMsg) setInput("");
-    setLoading(true);
-    
-    const newMsgs = [...messages, { role: "user", content: msgToSend }];
-    setMessages(newMsgs);
-
+// ============ LOGIN SCREEN ============
+function AuthScreen() {
+  const handleGoogleLogin = async () => {
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json", 
-          "x-api-key": apiKey, 
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true" 
-        },
-        body: JSON.stringify({
-          model: "claude-3-5-sonnet-20241022",
-          max_tokens: 2048,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: "user", content: `KO'RIB CHIQILADIGAN KOD:\n\`\`\`javascript\n${code}\n\`\`\`\n\nTOPSHIRIQ: ${msgToSend}` }]
-        })
-      });
-      const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
-      setMessages([...newMsgs, { role: "assistant", content: data.content[0].text }]);
-    } catch (err) {
-      setMessages([...newMsgs, { role: "assistant", content: `❌ XATOLIK: ${err.message}. API kodingizni yoki internetni tekshiring.` }]);
-    } finally { setLoading(false); }
-  };
-
-  const runCode = () => {
-    setActiveTab("output"); setOutput("");
-    const logs = [];
-    const origLog = console.log, origErr = console.error;
-    console.log = (...a) => logs.push("› " + a.join(" "));
-    console.error = (...a) => logs.push("✖ " + a.join(" "));
-    try { 
-      new Function(code)(); 
-      setOutput(logs.join("\\n") || "✓ Kod muvaffaqiyatli bajarildi (output bo'sh)"); 
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login xatoligi:", error);
     }
-    catch (e) { setOutput("❌ ERROR: " + e.message); }
-    finally { console.log = origLog; console.error = origErr; }
   };
 
   return (
-    <div style={{ background: COLORS.bg, color: COLORS.text, height: "100vh", display: "flex", flexDirection: "column" }}>
-      <header style={{ height: 65, display: "flex", alignItems: "center", justifySpaceBetween: "space-between", padding: "0 25px", borderBottom: `1px solid ${COLORS.border}`, background: COLORS.panel, boxShadow: "0 4px 15px rgba(0,0,0,0.4)", zIndex: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.green})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-1px" }}>◈ ZeroGravity IDE</h1>
-          <span style={{ fontSize: 10, color: COLORS.muted, border: `1px solid ${COLORS.border}`, padding: "2px 6px", borderRadius: 4 }}>v2.0 PRO</span>
-        </div>
-        
-        <div style={{ display: "flex", flex: 1, justifyContent: "flex-end", alignItems: "center", gap: 15 }}>
-          <input type="password" placeholder="sk-ant-api..." value={apiKey} onChange={e => setApiKey(e.target.value)} style={{ background: COLORS.surface, border: `1px solid \${COLORS.border}`, borderRadius: 8, color: "white", padding: "8px 12px", fontSize: 12, width: 180, outline: "none" }} />
-          
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} />
-          <button onClick={() => fileInputRef.current.click()} style={{ background: "transparent", border: `1px solid ${COLORS.border}`, color: COLORS.text, padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>📁 Fayl Yuklash</button>
-          
-          <button onClick={() => sendMessage("Bu kodni chuqur tahlil qil va uning eng tubidagi yashirin xatolarini topib ber.")} disabled={!apiKey || loading} style={{ background: `${COLORS.purple}22`, border: `1px solid ${COLORS.purple}`, color: COLORS.purple, padding: "8px 20px", borderRadius: 8, fontWeight: 700, cursor: "pointer", opacity: apiKey ? 1 : 0.4 }}>⚡ CHUQUR TAHLIL</button>
-          
-          <button onClick={runCode} style={{ background: COLORS.green, padding: "8px 24px", borderRadius: 8, fontWeight: 800, color: "#000", border: "none", cursor: "pointer", boxShadow: `0 4px 12px ${COLORS.green}33` }}>▶ ISHGA TUSHIR</button>
-        </div>
-      </header>
-
-      <main style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Muharrir */}
-        <div style={{ width: "55%", display: "flex", flexDirection: "column", borderRight: `1px solid \${COLORS.border}` }}>
-          <div style={{ display: "flex", background: COLORS.panel, borderBottom: `1px solid ${COLORS.border}` }}>
-            <button onClick={() => setActiveTab("editor")} style={{ flex: 1, padding: 14, background: activeTab === "editor" ? COLORS.surface : "transparent", color: activeTab === "editor" ? COLORS.accent : COLORS.muted, border: "none", fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>EDITOR</button>
-            <button onClick={() => setActiveTab("output")} style={{ flex: 1, padding: 14, background: activeTab === "output" ? COLORS.surface : "transparent", color: activeTab === "output" ? COLORS.green : COLORS.muted, border: "none", fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>OUTPUT</button>
-          </div>
-          <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-            {activeTab === "editor" ? 
-              <textarea value={code} onChange={e => setCode(e.target.value)} style={{ width: "100%", height: "100%", background: "transparent", color: "#a8d8ea", padding: 25, border: "none", outline: "none", fontFamily: "'JetBrains Mono', monospace", fontSize: 14, resize: "none", lineHeight: 1.7 }} /> :
-              <div style={{ padding: 25, whiteSpace: "pre-wrap", fontFamily: "'JetBrains Mono', monospace", fontSize: 13, height: "100%", overflowY: "auto", color: COLORS.text }}>{output || "Output bu yerda aks etadi..."}</div>
-            }
-          </div>
+    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg }}>
+      <div className="fade-in" style={{ width: 400, padding: 40, background: C.surface, borderRadius: 20, border: `1px solid ${C.border}`, textAlign: "center" }}>
+        <div style={{ marginBottom: 35 }}>
+          <div style={{ fontSize: 36, fontWeight: 900, background: `linear-gradient(135deg, ${C.accent}, ${C.pink}, ${C.blue})`, backgroundSize: "200% 200%", animation: "gradient 4s ease infinite", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 8 }}>AbdGPT</div>
+          <div style={{ color: C.muted, fontSize: 14 }}>Sizning shaxsiy AI yordamchingiz</div>
         </div>
 
-        {/* AI Chat */}
-        <div style={{ width: "45%", display: "flex", flexDirection: "column", background: COLORS.panel }}>
-          <div style={{ padding: "15px 25px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 8, height: 8, background: COLORS.green, borderRadius: "50%", boxShadow: `0 0 10px ${COLORS.green}` }}></div>
-            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1 }}>AI ANALITIK</span>
-            {loading && <span style={{ fontSize: 11, color: COLORS.purple, fontStyle: "italic", marginLeft: "auto" }}>🧠 O'ylanmoqda...</span>}
-          </div>
-          
-          <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
-            {messages.map((m, i) => (
-              <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "90%" }}>
-                <div style={{ background: m.role === "user" ? COLORS.surface : "transparent", padding: "14px 18px", borderRadius: 16, border: `1px solid ${m.role === "user" ? COLORS.accent + "44" : COLORS.border}`, boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
-                  {m.content.includes("<thought>") ? (
-                    <div>
-                      <div style={{ fontSize: 12, color: COLORS.muted, fontStyle: "italic", background: `${COLORS.purple}11`, padding: 10, borderRadius: 8, borderLeft: `2px solid ${COLORS.purple}`, marginBottom: 12 }}>
-                         <strong>🧠 Tahlil:</strong><br/>
-                         {m.content.split("</thought>")[0].replace("<thought>", "").trim()}
-                      </div>
-                      <div style={{ lineHeight: 1.6, fontSize: 14, whiteSpace: "pre-wrap" }}>{m.content.split("</thought>")[1].trim()}</div>
-                    </div>
-                  ) : <div style={{ lineHeight: 1.6, fontSize: 14, whiteSpace: "pre-wrap" }}>{m.content}</div>}
-                </div>
-              </div>
-            ))}
-            <div ref={chatEndRef} />
-          </div>
-
-          <div style={{ padding: 20, borderTop: `1px solid ${COLORS.border}`, display: "flex", gap: 12, background: COLORS.panel }}>
-            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder={apiKey ? "Kod haqida so'rang..." : "API kalitni kiriting..."} style={{ flex: 1, background: COLORS.surface, border: `1px solid \${COLORS.border}`, borderRadius: 10, padding: "12px 16px", color: "white", outline: "none", fontSize: 14 }} />
-            <button onClick={() => sendMessage()} disabled={loading || !input.trim() || !apiKey} style={{ background: COLORS.accent, border: "none", borderRadius: 10, width: 50, color: "#000", fontWeight: 800, cursor: "pointer", transition: "0.2s" }}>↑</button>
-          </div>
-        </div>
-      </main>
+        <button onClick={handleGoogleLogin} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "14px", background: "white", border: "none", borderRadius: 12, color: "#000", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "0.2s" }}>
+          <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" width="20" height="20" />
+          Google orqali kirish
+        </button>
+      </div>
     </div>
   );
+}
+
+// ============ MAIN APP ============
+function ChatApp({ user }) {
+  const [chats, setChats] = useState([]);
+  const [activeChatId, setActiveChatId] = useState(null);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [showApiInput, setShowApiInput] = useState(false);
+  const chatEndRef = useRef(null);
+
+  // Firestore'dan API Key va Chatlarni yuklash
+  useEffect(() => {
+    if (!user) return;
+    
+    // API Keyni yuklash
+    const fetchApiKey = async () => {
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists() && docSnap.data().apiKey) {
+        setApiKey(docSnap.data().apiKey);
+      }
+    };
+    fetchApiKey();
+
+    // Chatlarni real-vaqtda yuklash
+    const chatsRef = collection(db, "users", user.uid, "chats");
+    const unsubscribe = onSnapshot(chatsRef, (snapshot) => {
+      const loadedChats = snapshot.docs.map(doc => doc.data());
+      // Sana bo'yicha saralash (eng yangisi tepada)
+      loadedChats.sort((a, b) => b.createdAt - a.createdAt);
+      setChats(loadedChats);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chats, activeChatId]);
+
+  // API Key saqlanganda Firestore'ga yozish
+  const handleApiKeyChange = async (newKey) => {
+    setApiKey(newKey);
+    await setDoc(doc(db, "users", user.uid), { apiKey: newKey }, { merge: true });
+  };
+
+  const activeChat = chats.find(c => c.id === activeChatId);
+  const activeMessages = activeChat?.messages || [];
+
+  const createNewChat = () => {
+    const newId = generateId();
+    setActiveChatId(newId);
+  };
+
+  const deleteChat = async (id, e) => {
+    e.stopPropagation();
+    if (activeChatId === id) setActiveChatId(null);
+    await deleteDoc(doc(db, "users", user.uid, "chats", id));
+  };
+
+  const sendMessage = async (customMsg = null) => {
+    const msg = customMsg || input.trim();
+    if (!msg || loading || !apiKey) return;
+    if (!customMsg) setInput("");
+    setLoading(true);
+
+    let chatId = activeChatId;
+    let chatTitle = activeChat?.title || "Yangi suhbat";
+    let currentMsgs = activeMessages;
+
+    if (!chatId || currentMsgs.length === 0) {
+      chatId = chatId || generateId();
+      chatTitle = msg.slice(0, 40);
+      setActiveChatId(chatId);
+    }
+
+    const newMsgs = [...currentMsgs, { role: "user", content: msg }];
+    const chatDocRef = doc(db, "users", user.uid, "chats", chatId);
+
+    // Xabarni vaqtinchalik yozib ko'ramiz (foydalanuvchi qismi)
+    await setDoc(chatDocRef, { id: chatId, title: chatTitle, messages: newMsgs, createdAt: activeChat?.createdAt || Date.now() });
+
+    try {
+      const apiMsgs = newMsgs.map(m => ({ role: m.role, content: m.content }));
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 2000, system: SYSTEM, messages: apiMsgs })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      
+      const reply = data.content[0].text;
+      
+      // AI javobini Firestore'ga qo'shamiz
+      await setDoc(chatDocRef, { id: chatId, title: chatTitle, messages: [...newMsgs, { role: "assistant", content: reply }], createdAt: activeChat?.createdAt || Date.now() });
+
+    } catch (err) {
+      await setDoc(chatDocRef, { id: chatId, title: chatTitle, messages: [...newMsgs, { role: "assistant", content: `❌ Xatolik: ${err.message}` }], createdAt: activeChat?.createdAt || Date.now() });
+    }
+
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ height: "100vh", display: "flex", background: C.bg }}>
+      {/* Sidebar */}
+      <div style={{ width: 280, background: C.sidebar, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{ padding: "20px 18px", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 22, fontWeight: 900, background: `linear-gradient(135deg, ${C.accent}, ${C.pink})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 15 }}>AbdGPT</div>
+          <button onClick={createNewChat} style={{ width: "100%", padding: "12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>+</span> Yangi suhbat
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
+          {chats.map(chat => (
+            <div key={chat.id} onClick={() => setActiveChatId(chat.id)}
+              style={{ padding: "12px 14px", marginBottom: 4, borderRadius: 10, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center",
+                background: activeChatId === chat.id ? C.surface : "transparent",
+                border: activeChatId === chat.id ? `1px solid ${C.border}` : "1px solid transparent"
+              }}>
+              <span style={{ fontSize: 13, color: activeChatId === chat.id ? C.text : C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{chat.title}</span>
+              <span onClick={(e) => deleteChat(chat.id, e)} style={{ fontSize: 16, color: C.dim, cursor: "pointer", marginLeft: 8, padding: "0 5px" }}>×</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: "15px", borderTop: `1px solid ${C.border}` }}>
+          <div onClick={() => setShowApiInput(!showApiInput)} style={{ fontSize: 12, color: C.muted, cursor: "pointer", marginBottom: showApiInput ? 10 : 0 }}>⚙️ API Kalit sozlamalari</div>
+          {showApiInput && <input type="password" value={apiKey} onChange={e => handleApiKeyChange(e.target.value)} placeholder="sk-ant-..." style={{ width: "100%", padding: "8px 12px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12, outline: "none", marginBottom: 10 }} />}
+          
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, padding: "10px", background: C.surface, borderRadius: 10 }}>
+            {user.photoURL ? <img src={user.photoURL} alt="Avatar" style={{ width: 32, height: 32, borderRadius: "50%" }} /> : <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: "bold" }}>{user.displayName?.charAt(0)}</div>}
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <div style={{ fontSize: 13, fontWeight: "bold", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{user.displayName}</div>
+              <div onClick={() => signOut(auth)} style={{ fontSize: 11, color: "#ef4444", cursor: "pointer" }}>Chiqish</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Chat */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        {!activeChatId || activeMessages.length === 0 ? (
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 15 }}>
+            <div style={{ fontSize: 48, fontWeight: 900, background: `linear-gradient(135deg, ${C.accent}, ${C.pink}, ${C.blue})`, backgroundSize: "200% 200%", animation: "gradient 4s ease infinite", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Salom, {user.displayName?.split(" ")[0]}!</div>
+            <div style={{ color: C.muted, fontSize: 18, maxWidth: 500, textAlign: "center", lineHeight: 1.6 }}>Men AbdGPT — sizning shaxsiy AI do'stingizman. Har qanday savolingizga javob beraman!</div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap", justifyContent: "center" }}>
+              {["Bugun kayfiyatim yaxshi emas 😔", "Mengamaslahat siri kerak", "Qiziq fakt aytib ber 🧠", "AbdGPT kimsan?"].map(s => (
+                <button key={s} onClick={() => sendMessage(s)} style={{ padding: "10px 20px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, color: C.text, fontSize: 13, cursor: "pointer" }}>{s}</button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ flex: 1, overflowY: "auto", padding: "30px 0" }}>
+              <div style={{ maxWidth: 750, margin: "0 auto", padding: "0 20px" }}>
+                {activeMessages.map((m, i) => (
+                  <div key={i} className="fade-in" style={{ marginBottom: 25 }}>
+                    <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                      {m.role === "user" ? (
+                         user.photoURL ? <img src={user.photoURL} alt="U" style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0 }} /> : <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, background: C.surface, color: C.muted }}>U</div>
+                      ) : (
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, background: `linear-gradient(135deg, ${C.accent}, ${C.pink})`, color: "white" }}>A</div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 6 }}>{m.role === "user" ? user.displayName : "AbdGPT"}</div>
+                        <div style={{ fontSize: 15, lineHeight: 1.7, color: C.text, whiteSpace: "pre-wrap" }}>{m.content}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {loading && (
+                  <div className="fade-in" style={{ display: "flex", gap: 14, marginBottom: 25 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accent}, ${C.pink})`, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 800, fontSize: 14 }}>A</div>
+                    <div style={{ color: C.muted, fontSize: 14, paddingTop: 6 }}>
+                      <span style={{ animation: "pulse 1.5s infinite" }}>AbdGPT o'ylanmoqda</span>
+                      <span style={{ animation: "pulse 1.5s infinite 0.3s" }}>.</span>
+                      <span style={{ animation: "pulse 1.5s infinite 0.6s" }}>.</span>
+                      <span style={{ animation: "pulse 1.5s infinite 0.9s" }}>.</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+            </div>
+
+            <div style={{ padding: "20px 0 30px", borderTop: `1px solid ${C.border}` }}>
+              <div style={{ maxWidth: 750, margin: "0 auto", padding: "0 20px" }}>
+                {!apiKey && <div style={{ textAlign: "center", color: "#ef4444", fontSize: 13, marginBottom: 10 }}>⚠️ Chap panel (⚙️) dan API Kalitni kiritishingiz kerak</div>}
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                  <textarea value={input} onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                    placeholder="Xabar yozing (AbdGPT siz bilan)..." rows={1}
+                    style={{ flex: 1, padding: "16px 20px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, color: C.text, fontSize: 15, outline: "none", resize: "none", minHeight: 52, maxHeight: 150, lineHeight: 1.5 }}
+                    onFocus={e => e.target.style.borderColor = C.accent}
+                    onBlur={e => e.target.style.borderColor = C.border}
+                    onInput={e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }}
+                  />
+                  <button onClick={() => sendMessage()} disabled={loading || !input.trim() || !apiKey}
+                    style={{ width: 52, height: 52, borderRadius: 16, border: "none", cursor: (loading || !input.trim() || !apiKey) ? "not-allowed" : "pointer", fontSize: 20, fontWeight: 900, flexShrink: 0, color: "white", display: "flex", alignItems: "center", justifyContent: "center",
+                      background: (loading || !input.trim() || !apiKey) ? C.surface : `linear-gradient(135deg, ${C.accent}, ${C.accentLight})`,
+                      opacity: (loading || !input.trim() || !apiKey) ? 0.5 : 1
+                    }}>↑</button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============ ROOT ============
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) return <div style={{ height: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}><div style={{ color: C.accent }}>Yuklanmoqda...</div></div>;
+  if (!user) return <AuthScreen />;
+  return <ChatApp user={user} />;
 }
