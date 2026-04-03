@@ -51,7 +51,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       setCode(event.target.result);
-      setMessages(prev => [...prev, { role: "assistant", content: `📁 Fayl yuklandi: **\${file.name}**. Endi tahlil tugmasini bosib xatolarni ko'rishingiz mumkin!` }]);
+      setMessages(prev => [...prev, { role: "assistant", content: `📁 Fayl yuklandi: **${file.name}**. Endi tahlil tugmasini bosib xatolarni ko'rishingiz mumkin!` }]);
     };
     reader.readAsText(file);
   };
@@ -79,14 +79,14 @@ export default function App() {
           model: "claude-3-5-sonnet-20241022",
           max_tokens: 2048,
           system: SYSTEM_PROMPT,
-          messages: [{ role: "user", content: `KO'RIB CHIQILADIGAN KOD:\\n\`\`\`javascript\\n\${code}\\n\`\`\`\\n\\nTOPSHIRIQ: \${msgToSend}` }]
+          messages: [{ role: "user", content: `KO'RIB CHIQILADIGAN KOD:\n\`\`\`javascript\n${code}\n\`\`\`\n\nTOPSHIRIQ: ${msgToSend}` }]
         })
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
       setMessages([...newMsgs, { role: "assistant", content: data.content[0].text }]);
     } catch (err) {
-      setMessages([...newMsgs, { role: "assistant", content: `❌ XATOLIK: \${err.message}. API kodingizni yoki internetni tekshiring.` }]);
+      setMessages([...newMsgs, { role: "assistant", content: `❌ XATOLIK: ${err.message}. API kodingizni yoki internetni tekshiring.` }]);
     } finally { setLoading(false); }
   };
 
@@ -106,28 +106,28 @@ export default function App() {
 
   return (
     <div style={{ background: COLORS.bg, color: COLORS.text, height: "100vh", display: "flex", flexDirection: "column" }}>
-      <header style={{ height: 65, display: "flex", alignItems: "center", justifySpaceBetween: "space-between", padding: "0 25px", borderBottom: `1px solid \${COLORS.border}`, background: COLORS.panel, boxShadow: "0 4px 15px rgba(0,0,0,0.4)", zIndex: 10 }}>
+      <header style={{ height: 65, display: "flex", alignItems: "center", justifySpaceBetween: "space-between", padding: "0 25px", borderBottom: `1px solid ${COLORS.border}`, background: COLORS.panel, boxShadow: "0 4px 15px rgba(0,0,0,0.4)", zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, background: `linear-gradient(135deg, \${COLORS.accent}, \${COLORS.green})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-1px" }}>◈ ZeroGravity IDE</h1>
-          <span style={{ fontSize: 10, color: COLORS.muted, border: `1px solid \${COLORS.border}`, padding: "2px 6px", borderRadius: 4 }}>v2.0 PRO</span>
+          <h1 style={{ fontSize: 22, fontWeight: 800, background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.green})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-1px" }}>◈ ZeroGravity IDE</h1>
+          <span style={{ fontSize: 10, color: COLORS.muted, border: `1px solid ${COLORS.border}`, padding: "2px 6px", borderRadius: 4 }}>v2.0 PRO</span>
         </div>
         
         <div style={{ display: "flex", flex: 1, justifyContent: "flex-end", alignItems: "center", gap: 15 }}>
           <input type="password" placeholder="sk-ant-api..." value={apiKey} onChange={e => setApiKey(e.target.value)} style={{ background: COLORS.surface, border: `1px solid \${COLORS.border}`, borderRadius: 8, color: "white", padding: "8px 12px", fontSize: 12, width: 180, outline: "none" }} />
           
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} />
-          <button onClick={() => fileInputRef.current.click()} style={{ background: "transparent", border: `1px solid \${COLORS.border}`, color: COLORS.text, padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>📁 Fayl Yuklash</button>
+          <button onClick={() => fileInputRef.current.click()} style={{ background: "transparent", border: `1px solid ${COLORS.border}`, color: COLORS.text, padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>📁 Fayl Yuklash</button>
           
-          <button onClick={() => sendMessage("Bu kodni chuqur tahlil qil va uning eng tubidagi yashirin xatolarini topib ber.")} disabled={!apiKey || loading} style={{ background: \`\${COLORS.purple}22\`, border: `1px solid \${COLORS.purple}`, color: COLORS.purple, padding: "8px 20px", borderRadius: 8, fontWeight: 700, cursor: "pointer", opacity: apiKey ? 1 : 0.4 }}>⚡ CHUQUR TAHLIL</button>
+          <button onClick={() => sendMessage("Bu kodni chuqur tahlil qil va uning eng tubidagi yashirin xatolarini topib ber.")} disabled={!apiKey || loading} style={{ background: `${COLORS.purple}22`, border: `1px solid ${COLORS.purple}`, color: COLORS.purple, padding: "8px 20px", borderRadius: 8, fontWeight: 700, cursor: "pointer", opacity: apiKey ? 1 : 0.4 }}>⚡ CHUQUR TAHLIL</button>
           
-          <button onClick={runCode} style={{ background: COLORS.green, padding: "8px 24px", borderRadius: 8, fontWeight: 800, color: "#000", border: "none", cursor: "pointer", boxShadow: \`0 4px 12px \${COLORS.green}33\` }}>▶ ISHGA TUSHIR</button>
+          <button onClick={runCode} style={{ background: COLORS.green, padding: "8px 24px", borderRadius: 8, fontWeight: 800, color: "#000", border: "none", cursor: "pointer", boxShadow: `0 4px 12px ${COLORS.green}33` }}>▶ ISHGA TUSHIR</button>
         </div>
       </header>
 
       <main style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Muharrir */}
         <div style={{ width: "55%", display: "flex", flexDirection: "column", borderRight: `1px solid \${COLORS.border}` }}>
-          <div style={{ display: "flex", background: COLORS.panel, borderBottom: `1px solid \${COLORS.border}` }}>
+          <div style={{ display: "flex", background: COLORS.panel, borderBottom: `1px solid ${COLORS.border}` }}>
             <button onClick={() => setActiveTab("editor")} style={{ flex: 1, padding: 14, background: activeTab === "editor" ? COLORS.surface : "transparent", color: activeTab === "editor" ? COLORS.accent : COLORS.muted, border: "none", fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>EDITOR</button>
             <button onClick={() => setActiveTab("output")} style={{ flex: 1, padding: 14, background: activeTab === "output" ? COLORS.surface : "transparent", color: activeTab === "output" ? COLORS.green : COLORS.muted, border: "none", fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>OUTPUT</button>
           </div>
@@ -141,8 +141,8 @@ export default function App() {
 
         {/* AI Chat */}
         <div style={{ width: "45%", display: "flex", flexDirection: "column", background: COLORS.panel }}>
-          <div style={{ padding: "15px 25px", background: COLORS.surface, borderBottom: `1px solid \${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 8, height: 8, background: COLORS.green, borderRadius: "50%", boxShadow: \`0 0 10px \${COLORS.green}\` }}></div>
+          <div style={{ padding: "15px 25px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 8, height: 8, background: COLORS.green, borderRadius: "50%", boxShadow: `0 0 10px ${COLORS.green}` }}></div>
             <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1 }}>AI ANALITIK</span>
             {loading && <span style={{ fontSize: 11, color: COLORS.purple, fontStyle: "italic", marginLeft: "auto" }}>🧠 O'ylanmoqda...</span>}
           </div>
@@ -150,10 +150,10 @@ export default function App() {
           <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
             {messages.map((m, i) => (
               <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "90%" }}>
-                <div style={{ background: m.role === "user" ? COLORS.surface : "transparent", padding: "14px 18px", borderRadius: 16, border: `1px solid \${m.role === "user" ? COLORS.accent + "44" : COLORS.border}`, boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
+                <div style={{ background: m.role === "user" ? COLORS.surface : "transparent", padding: "14px 18px", borderRadius: 16, border: `1px solid ${m.role === "user" ? COLORS.accent + "44" : COLORS.border}`, boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
                   {m.content.includes("<thought>") ? (
                     <div>
-                      <div style={{ fontSize: 12, color: COLORS.muted, fontStyle: "italic", background: \`\${COLORS.purple}11\`, padding: 10, borderRadius: 8, borderLeft: \`2px solid \${COLORS.purple}\`, marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, color: COLORS.muted, fontStyle: "italic", background: `${COLORS.purple}11`, padding: 10, borderRadius: 8, borderLeft: `2px solid ${COLORS.purple}`, marginBottom: 12 }}>
                          <strong>🧠 Tahlil:</strong><br/>
                          {m.content.split("</thought>")[0].replace("<thought>", "").trim()}
                       </div>
@@ -166,7 +166,7 @@ export default function App() {
             <div ref={chatEndRef} />
           </div>
 
-          <div style={{ padding: 20, borderTop: `1px solid \${COLORS.border}`, display: "flex", gap: 12, background: COLORS.panel }}>
+          <div style={{ padding: 20, borderTop: `1px solid ${COLORS.border}`, display: "flex", gap: 12, background: COLORS.panel }}>
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder={apiKey ? "Kod haqida so'rang..." : "API kalitni kiriting..."} style={{ flex: 1, background: COLORS.surface, border: `1px solid \${COLORS.border}`, borderRadius: 10, padding: "12px 16px", color: "white", outline: "none", fontSize: 14 }} />
             <button onClick={() => sendMessage()} disabled={loading || !input.trim() || !apiKey} style={{ background: COLORS.accent, border: "none", borderRadius: 10, width: 50, color: "#000", fontWeight: 800, cursor: "pointer", transition: "0.2s" }}>↑</button>
           </div>
